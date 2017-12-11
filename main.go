@@ -19,6 +19,7 @@ const DEFAULT_WAKEUP_TIME = 1
 type perfInfo struct {
 	pHandle          *process.Process
 	Name             string  `json:"process"`
+	ExactCpu         float64 `json:"exact_cpu"`
 	Cpu              float64 `json:"avg_cpu"`
 	CtxSwitchesVol   int64   `json:"ctx_voluntary"`
 	CtxSwitchesInvol int64   `json:"ctx_involuntary"`
@@ -70,12 +71,17 @@ loop:
 		case <-time.After(time.Second * DEFAULT_WAKEUP_TIME):
 			n++
 			for _, pInfo := range perfInfoMap {
-				cpu, _ := pInfo.pHandle.CPUPercent()
+				cput, _ := pInfo.pHandle.Times()
+				extcpu := cput.Total()
+				log.Printf("Old Exact Cpu %v", pInfo.ExactCpu)
+				log.Printf("New Exact Cpu %v", extcpu)
+
 				ctx, _ := pInfo.pHandle.NumCtxSwitches()
 				mem, _ := pInfo.pHandle.MemoryInfo()
 
-				log.Printf(" Sample %v", cpu)
-				pInfo.Cpu = approxRollingAverage(pInfo.Cpu, cpu, n)
+				pInfo.Cpu = exactAverage(pInfo.ExactCpu, extcpu)
+				log.Printf(" Average CPU  %v", pInfo.Cpu)
+				pInfo.ExactCpu = extcpu
 				pInfo.CtxSwitchesVol = ctx.Voluntary
 				pInfo.CtxSwitchesInvol = ctx.Involuntary
 				pInfo.Mem = int64(approxRollingAverage(float64(pInfo.Mem), float64(mem.RSS), n))
@@ -90,10 +96,11 @@ loop:
 func printStats() {
 	// convert to printable stats
 	tm.Clear()
-	avgs := tm.NewTable(0, 10, 5, ' ', 0)
-	fmt.Fprintf(avgs, "Name\tCPU\tCTX_voluntary\tCTX_involuntary\tMem\n")
+	avgs := tm.NewTable(0, 10, 6, ' ', 0)
+	fmt.Fprintf(avgs, "Name\tExactCPU\tCPU\tCTX_voluntary\tCTX_involuntary\tMem\n")
 	for _, perfInfo := range perfInfoMap {
-		fmt.Fprintf(avgs, "%s\t%v\t%d\t%d\t%s\n", perfInfo.Name, strconv.FormatFloat(float64(perfInfo.Cpu), 'f', 2, 32),
+		fmt.Fprintf(avgs, "%si\t%v\t%v\t%d\t%d\t%s\n", perfInfo.Name, strconv.FormatFloat(float64(perfInfo.ExactCpu), 'f' ,2 ,32),
+			strconv.FormatFloat(float64(perfInfo.Cpu), 'f', 2, 32),
 			perfInfo.CtxSwitchesVol, perfInfo.CtxSwitchesInvol, fmt.Sprintf("%v MB ", perfInfo.Mem/(1024*1024)))
 	}
 	tm.Println(avgs)
@@ -106,5 +113,13 @@ func approxRollingAverage(avg, new_sample float64, n int64) float64 {
 	avg -= avg / float64(n)
 	avg += new_sample / float64(n)
 
+	return avg
+}
+
+func exactAverage(old_total, new_total float64) float64 {
+	time_gap := (time.Second*DEFAULT_WAKEUP_TIME).Seconds()
+	diff := new_total - old_total
+	avg := 100*diff/time_gap
+	fmt.Println(avg)
 	return avg
 }
