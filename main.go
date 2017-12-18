@@ -73,14 +73,11 @@ loop:
 			for _, pInfo := range perfInfoMap {
 				cput, _ := pInfo.pHandle.Times()
 				extcpu := cput.Total()
-				log.Printf("Old Exact Cpu %v", pInfo.ExactCpu)
-				log.Printf("New Exact Cpu %v", extcpu)
 
 				ctx, _ := pInfo.pHandle.NumCtxSwitches()
 				mem, _ := pInfo.pHandle.MemoryInfo()
 
-				pInfo.Cpu = exactAverage(pInfo.ExactCpu, extcpu)
-				log.Printf(" Average CPU  %v", pInfo.Cpu)
+				pInfo.Cpu = getInstantCpuAverage(pInfo.ExactCpu, extcpu)
 				pInfo.ExactCpu = extcpu
 				pInfo.CtxSwitchesVol = ctx.Voluntary
 				pInfo.CtxSwitchesInvol = ctx.Involuntary
@@ -116,7 +113,7 @@ func approxRollingAverage(avg, new_sample float64, n int64) float64 {
 	return avg
 }
 
-func exactAverage(old_total, new_total float64) float64 {
+func getInstantCpuAverage(old_total, new_total float64) float64 {
 	time_gap := (time.Second*DEFAULT_WAKEUP_TIME).Seconds()
 	diff := new_total - old_total
 	avg := 100*diff/time_gap
